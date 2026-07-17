@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cat Facts - TriangleIP</title>
+  <link rel="stylesheet" href="/static/tip_design.css" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/htm@3/dist/htm.umd.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const { useState, useEffect, useRef } = React;
+    const html = htm.bind(React.createElement);
+    const USER_REQUEST = "Build a simple \"Cat Facts\" page. Show a heading and a button labelled \"New Cat Fact\". When the button is clicked, call the catfacts connection's GET /fact endpoint and display the returned fact text prominently, plus its character length in a small caption. Show a loading state while fetching and an error card if the call fails. Use only real API data from the catfacts connection (never hardcode a fact). Include the standard Diagnostics panel reflecting the call.";
+
+    async function callTip(method, path, opts, meta) {
+      const res = await fetch(path, { method, ...(opts || {}) });
+      const raw = await res.text();
+      let body;
+      try { body = JSON.parse(raw); } catch { body = raw; }
+      setApiCalls(prev => prev.concat([{
+        method, path, status: res.status, ok: res.ok,
+        input: (meta && meta.input) || null,
+        output: meta && meta.output ? meta.output(body) : body,
+        mapping: (meta && meta.mapping) || null,
+      }]));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return body;
+    }
+
+    function DiagnosticsPanel({ apiCalls }) {
+      return html`
+        <div className="tip-card" style=${{ marginTop: '32px' }}>
+          <details>
+            <summary style=${{ cursor: 'pointer', fontWeight: 600, fontSize: '15px', color: 'var(--tip-text-secondary)' }}>Diagnostics</summary>
+            <div style=${{ marginTop: '16px' }}>
+              <div style=${{ marginBottom: '12px' }}>
+                <strong style=${{ color: 'var(--tip-text-secondary)', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Request</strong>
+                <p style=${{ marginTop: '4px', fontSize: '14px', color: 'var(--tip-text-primary)', lineHeight: 1.6 }}>${USER_REQUEST}</p>
+              </div>
+              ${apiCalls.length === 0 && html`
+                <p style=${{ color: 'var(--tip-text-secondary)', fontSize: '13px', fontStyle: 'italic' }}>No API calls yet.</p>
+              `}
+              ${apiCalls.map((call, idx) => html`
+                <div key=${idx} style=${{ marginBottom: '20px', padding: '16px', background: 'var(--tip-bg-secondary, #f7f8fa)', borderRadius: '8px', border: '1px solid var(--tip-border, #e2e5ea)' }}>
+                  <div style=${{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <span className=${'tip-tag ' + (call.ok ? 'tip-tag-success' : 'tip-tag-error')}>${call.method}</span>
+                    <code style=${{ fontSize: '13px', color: 'var(--tip-text-primary)' }}>${call.path}</code>
+                    <span style=${{ marginLeft: 'auto', fontSize: '12px', color: 'var(--tip-text-secondary)' }}>Status: ${call.status}</span>
+                  </div>
+
+                  <div style=${{ marginBottom: '8px' }}>
+                    <strong style=${{ fontSize: '12px', color: 'var(--tip-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Input Parameters</strong>
+                    <p style=${{ marginTop: '2px', fontSize: '13px' }}>${call.input ? JSON.stringify(call.input) : 'None (no query params or body)'}</p>
+                  </div>
+
+                  <div style=${{ marginBottom: '8px' }}>
+                    <strong style=${{ fontSize: '12px', color: 'var(--tip-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Output Parameters</strong>
+                    <pre style=${{ marginTop: '2px', fontSize: '13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid var(--tip-border, #e2e5ea)' }}>${JSON.stringify(call.output, null, 2)}</pre>
+                  </div>
+
+                  ${call.mapping && html`
+                    <div>
+                      <strong style=${{ fontSize: '12px', color: 'var(--tip-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Field Mapping</strong>
+                      <div className="tip-table-wrap" style=${{ marginTop: '4px' }}>
+                        <table className="tip-table">
+                          <thead>
+                            <tr>
+                              <th>Response Field</th>
+                              <th>UI Element</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${call.mapping.map((m, mi) => html`
+                              <tr key=${mi}>
+                                <td><code style=${{ fontSize: '12px' }}>${m.field}</code></td>
+                                <td style=${{ fontSize: '13px' }}>${m.ui}</td>
+                              </tr>
+                            `)}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  `}
+                </div>
+              `)}
+            </div>
+          </details>
+        </div>
+      `;
+    }
+
+    function App() {
+      const [fact, setFact] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const [apiCalls, setApiCalls] = useState([]);
+
+      async function fetchFact() {
+        setLoading(true);
+        setError(null);
+        try {
+          const body = await callTip('GET', '/api/catfacts/fact', null, {
+            input: null,
+            output: function(b) {
+              return { fact: b.fact, length: b.length };
+            },
+            mapping: [
+              { field: 'fact', ui: 'Fact text displayed in the main card' },
+              { field: 'length', ui: 'Character count caption below the fact' }
+            ]
+          });
+          setFact(body);
+        } catch (err) {
+          setError(err.message || 'Failed to fetch cat fact');
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      return html`
+        <div className="tip-page">
+          <nav className="tip-navbar">
+            <a className="tip-navbar-brand" href="/">TriangleIP</a>
+          </nav>
+
+          <h1 className="tip-page-title">Cat Facts</h1>
+          <p style=${{ color: 'var(--tip-text-secondary)', marginBottom: '24px', fontSize: '15px' }}>
+            Discover interesting facts about cats, fetched live from the Cat Facts API.
+          </p>
+
+          <div style=${{ marginBottom: '24px' }}>
+            <button
+              className="tip-btn tip-btn-primary"
+              onClick=${fetchFact}
+              disabled=${loading}
+              style=${{ minWidth: '160px' }}
+            >
+              ${loading ? 'Loading...' : 'New Cat Fact'}
+            </button>
+          </div>
+
+          ${loading && html`
+            <div className="tip-card" style=${{ textAlign: 'center', padding: '40px' }}>
+              <div style=${{ fontSize: '24px', marginBottom: '8px' }}>🐱</div>
+              <p style=${{ color: 'var(--tip-text-secondary)', margin: 0 }}>Fetching a new cat fact...</p>
+            </div>
+          `}
+
+          ${error && !loading && html`
+            <div className="tip-card" style=${{ borderColor: 'var(--tip-error, #e74c3c)', borderLeft: '4px solid var(--tip-error, #e74c3c)' }}>
+              <div style=${{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span className="tip-tag tip-tag-error">Error</span>
+                <strong style=${{ color: 'var(--tip-error, #e74c3c)' }}>Failed to fetch cat fact</strong>
+              </div>
+              <p style=${{ color: 'var(--tip-text-secondary)', margin: 0, fontSize: '14px' }}>${error}</p>
+              <p style=${{ color: 'var(--tip-text-secondary)', margin: '8px 0 0', fontSize: '13px' }}>Please try again by clicking the button above.</p>
+            </div>
+          `}
+
+          ${fact && !loading && html`
+            <div className="tip-card" style=${{ padding: '32px', maxWidth: '680px' }}>
+              <div style=${{ fontSize: '36px', marginBottom: '16px' }}>🐱</div>
+              <p style=${{ fontSize: '20px', lineHeight: 1.7, color: 'var(--tip-text-primary)', margin: '0 0 16px 0', fontWeight: 500 }}>
+                ${fact.fact}
+              </p>
+              <p style=${{ fontSize: '13px', color: 'var(--tip-text-secondary)', margin: 0 }}>
+                ${fact.length} characters
+              </p>
+            </div>
+          `}
+
+          ${!fact && !loading && !error && html`
+            <div className="tip-card" style=${{ textAlign: 'center', padding: '48px', maxWidth: '680px' }}>
+              <div style=${{ fontSize: '48px', marginBottom: '16px' }}>😺</div>
+              <p style=${{ color: 'var(--tip-text-secondary)', margin: 0, fontSize: '15px' }}>
+                Click the button above to get your first cat fact!
+              </p>
+            </div>
+          `}
+
+          <${DiagnosticsPanel} apiCalls=${apiCalls} />
+        </div>
+      `;
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(html`<${App} />`);
+  </script>
+</body>
+</html>
